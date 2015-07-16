@@ -1,5 +1,6 @@
-function stderr(input) --Wrapper for stderr, so code looks cleaner
-	io.stderr:write(input)
+function stderr(input) --Wrapper for writing to stderr, so code looks cleaner
+	io.stderr:write(input.."\n")
+	os.exit()
 end
 
 function exec(input)
@@ -8,6 +9,15 @@ function exec(input)
 	handle:close()
 
 	return data
+end
+
+function strip(input) -- Remove special characters from a line, so it is safe to use in bash.
+	local output = string.gsub(input,"&","\\&")
+	local output = string.gsub(input,"(","\\(")
+	local output = string.gsub(input,"%)","\\)")
+	local output = string.gsub(input,"{","\\{")
+	local output = string.gsub(input,"}","\\}")
+	return output
 end
 
 function readConfig()
@@ -19,8 +29,8 @@ function readConfig()
 end
 
 function writeDB(input)
-	local output = exec("echo '"..json.encode(input).."' | lz4 -f -9 - "..config["db_directory"].."/"..config["db_file"].." 2>&1")
-	local value = 0 --This following code is to grab the results from lz4, so we can figure out how efficient the compression is.
+	local output = exec("echo '"..json.encode(input).."' | lz4 -f -9 - "..config["db_path"].."/"..config["db_file"].." 2>&1")
+	local value = 0 --This following code is to grab the results from lz4, so we can figure out how efficient the compression is. 
 	for token in string.gmatch(string.gsub(output,"\n",""),"[^ ]+") do
 		value = (value+1)
 		if value == 3 then
@@ -35,13 +45,13 @@ function writeDB(input)
 end
 
 function readDB()
-	local file = io.open(config["db_directory"].."/"..config["db_file"],"r")
+	local file = io.open(config["db_path"].."/"..config["db_file"],"r")
 	if file == nil then
 		return {files={};}
 	else
 		file:close()
 
-		return json.decode(exec("lz4cat '"..config["db_directory"].."/"..config["db_file"].."'"))
+		return json.decode(exec("lz4cat '"..config["db_path"].."/"..config["db_file"].."'"))
 	end
 end
 
@@ -57,7 +67,7 @@ function IndexDir(path)
 			else
 				if db["files"][point] == nil then
 					count.files = (count.files+1)
-					hash = string.sub(exec(config["hash_cmd"].." '"..point.."'"),1,config["hash_len"])
+					hash = string.sub(exec(config["hash_cmd"].." '"..strip(point).."'"),1,config["hash_len"])
 					db["files"][point] = hash
 					input[file] = point
 				end
@@ -68,12 +78,16 @@ function IndexDir(path)
 	return input
 end
 
+function help()
+	print("Not implemented.")
+	os.exit()
+end
+
 lfs  = require("lfs")
 json = require("json")
 
 config = readConfig()
 
--- Todo: parse arguments here
 for key,value in ipairs(arg) do
 	if value == "-i" or value == "--index" then
 		if action == nil then
@@ -94,6 +108,9 @@ for key,value in ipairs(arg) do
 
 	elseif value == "-d" or value == "--directory" then --Path to the directory we are indexing / storing, depending on mode.
 		config["directory"] = arg[(key+1)]
+
+	elseif value == "-h" or value == "--help" then 
+		help()
 	end
 end
 
@@ -101,7 +118,7 @@ if action == nil then
 	stderr("Error, action not specified. Please include either '--index' or '--restore', or use the argument '--help' for more instructions.")
 end
 
-if config["directory"] == nil then
+if config["directory"] == nil or config["directory"] == "" then
 	stderr("Error, directory not specified, please specify one using '--directory' or use the argument '--help' for more instructions.")
 end
 
@@ -112,4 +129,4 @@ db["folders"] = IndexDir(config["directory"])
 
 writeDB(db)
 
-print("Took "..(os.time() - count.time).." seconds to index "..count.folders.." folders and hash "..count.files.." new files.")]]
+print("Took "..(os.time() - count.time).." seconds to index "..count.folders.." folders and hash "..count.files.." new files.")
