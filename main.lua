@@ -1,3 +1,7 @@
+function stderr(input) --Wrapper for stderr, so code looks cleaner
+	io.stderr:write(input)
+end
+
 function exec(input)
 	local handle = io.popen(input)
 	local data = handle:read("*a")
@@ -6,9 +10,17 @@ function exec(input)
 	return data
 end
 
+function readConfig()
+	local file = io.open("config.json","r")
+	local output = json.decode(file:read("*a"))
+	file:close()
+
+	return output
+end
+
 function writeDB(input)
-	local output = exec("echo '"..json.encode(input).."' | lz4 -f -9 - candunc.db 2>&1")
-	local value = 0
+	local output = exec("echo '"..json.encode(input).."' | lz4 -f -9 - "..config["db_directory"].."/"..config["db_file"].." 2>&1")
+	local value = 0 --This following code is to grab the results from lz4, so we can figure out how efficient the compression is.
 	for token in string.gmatch(string.gsub(output,"\n",""),"[^ ]+") do
 		value = (value+1)
 		if value == 3 then
@@ -23,19 +35,19 @@ function writeDB(input)
 end
 
 function readDB()
-	local file = io.open("candunc.db","r")
+	local file = io.open(config["db_directory"].."/"..config["db_file"],"r")
 	if file == nil then
-		return {files={}}
+		return {files={};}
 	else
 		file:close()
 
-		return json.decode(exec("lz4cat candunc.db"))
+		return json.decode(exec("lz4cat '"..config["db_directory"].."/"..config["db_file"].."'"))
 	end
 end
 
-function IndexDir(path) -- Input = database
+function IndexDir(path)
 	local input = {}
-	for file in lfs.dir(path) do -- Local directory for now
+	for file in lfs.dir(path) do
 		if string.sub(file,1,1) ~= "." then -- Ignore hidden directories and files
 			local point = (path.."/"..file)
 			local attr = lfs.attributes(point)
@@ -45,7 +57,7 @@ function IndexDir(path) -- Input = database
 			else
 				if db["files"][point] == nil then
 					count.files = (count.files+1)
-					hash = string.sub(exec("shasum -a 256 '"..point.."'"),1,64)
+					hash = string.sub(exec(config["hash_cmd"].." '"..point.."'"),1,config["hash_len"])
 					db["files"][point] = hash
 					input[file] = point
 				end
@@ -55,15 +67,49 @@ function IndexDir(path) -- Input = database
 
 	return input
 end
+
 lfs  = require("lfs")
 json = require("json")
 
--- Todo: parse arguments here
+config = readConfig()
 
-count = {folders = 0, files = 0, time = os.time()}
+-- Todo: parse arguments here
+for key,value in ipairs(arg) do
+	if value == "-i" or value == "--index" then
+		if action == nil then
+			action = "index"
+		else
+			stderr("Error, multiple program types entered!")
+		end
+
+	elseif value == "-r" or value == "--restore" then
+		if action == nil then
+			action = "restore"
+		else
+			stderr("Error, multiple program types entered! Use the argument '--help' for more instructions.")
+		end
+
+	elseif value == "-f" or value == "--file" then --Which database file it is stored in. If not given, assume the default in config.json
+		config["db_file"] = arg[(key+1)]
+
+	elseif value == "-d" or value == "--directory" then --Path to the directory we are indexing / storing, depending on mode.
+		config["directory"] = arg[(key+1)]
+	end
+end
+
+if action == nil then
+	stderr("Error, action not specified. Please include either '--index' or '--restore', or use the argument '--help' for more instructions.")
+end
+
+if config["directory"] == nil then
+	stderr("Error, directory not specified, please specify one using '--directory' or use the argument '--help' for more instructions.")
+end
+
+count = {folders = 0, files = 0, time = os.time()} -- For statistics purposes
+
 db = readDB()
-db["folders"] = IndexDir("/Users/candunc/Dropbox/Projects")
+db["folders"] = IndexDir(config["directory"])
 
 writeDB(db)
 
-print("Took "..(os.time() - count.time).." seconds to index "..count.folders.." folders and hash "..count.files.." new files.")
+print("Took "..(os.time() - count.time).." seconds to index "..count.folders.." folders and hash "..count.files.." new files.")]]

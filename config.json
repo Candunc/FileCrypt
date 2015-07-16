@@ -1,0 +1,7 @@
+{
+	"hash_cmd":"shasum -a 256",
+	"hash_len":64,
+	"db_file":"FileCrypt.db",
+	"db_location":"~/.local/share/FileCrypt/",
+	"directory":null
+}

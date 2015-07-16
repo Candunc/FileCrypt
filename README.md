@@ -32,3 +32,13 @@ Install the following dependancies:
 > mv FileCrypt/filecrypt /usr/local/bin/
 > 
 > chmod 555 /usr/local/bin/filecrypt
+
+### Usage
+
+*todo*
+
+### Todo
+
+* Add some sort of collision to try and detect when an index is performed on an incompatible database. 
+* Convert from json to SQLite (and add luasql.sqlite to dependancies; install script)
+* Add install script for Windows
